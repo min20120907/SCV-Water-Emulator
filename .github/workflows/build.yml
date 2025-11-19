@@ -1,0 +1,78 @@
+name: Flutter Multi-Platform CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    # Use a matrix to define the platform and associated runner OS/settings
+    strategy:
+      matrix:
+        # Define the different build targets
+        platform: [android, ios, macos, windows, linux]
+        
+        # Define the runner based on the target platform
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: ios
+            os: macos-latest
+          - platform: macos
+            os: macos-latest
+          - platform: windows
+            os: windows-latest
+          - platform: linux
+            os: ubuntu-latest
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      # Checkout the code
+      - uses: actions/checkout@v4
+      
+      # Set up the appropriate Flutter version
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.x' # Use your desired Flutter version
+          channel: 'stable'
+
+      # Get dependencies
+      - run: flutter pub get
+
+      # Run tests (Optional, but recommended)
+      - run: flutter test
+
+      # 🔨 Build Android App (APK or AppBundle)
+      - name: Build Android App
+        if: matrix.platform == 'android'
+        run: flutter build apk --release
+        
+      # 🍏 Build macOS/iOS App
+      - name: Build macOS/iOS App
+        if: matrix.platform == 'ios' || matrix.platform == 'macos'
+        run: |
+          # The iOS build requires specific dependencies and setup not fully covered here.
+          # For macos, the command is simple:
+          flutter build macos --release
+          # For iOS, you would typically build an archive:
+          flutter build ipa --release
+          
+      # 🖥️ Build Windows App
+      - name: Build Windows App
+        if: matrix.platform == 'windows'
+        run: flutter build windows --release
+        
+      #🐧 Build Linux App
+      - name: Build Linux App
+        if: matrix.platform == 'linux'
+        run: flutter build linux --release
+
+      # 📦 Upload Artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-build
+          path: |
+            build/${{ matrix.platform }}/* # Adjust path based on your exact output needs
