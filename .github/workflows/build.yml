@@ -8,13 +8,12 @@ on:
 
 jobs:
   build:
-    # Use a matrix to define the platform and associated runner OS/settings
+    # Use a matrix strategy to run the same steps on different runners and for different platforms
     strategy:
       matrix:
-        # Define the different build targets
         platform: [android, ios, macos, windows, linux]
         
-        # Define the runner based on the target platform
+        # Define the runner (OS) required for each platform build
         include:
           - platform: android
             os: ubuntu-latest
@@ -30,49 +29,57 @@ jobs:
     runs-on: ${{ matrix.os }}
     
     steps:
-      # Checkout the code
-      - uses: actions/checkout@v4
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v4
       
-      # Set up the appropriate Flutter version
-      - uses: subosito/flutter-action@v2
+      - name: 🎯 Set Up Flutter SDK
+        # Uses the 'latest' stable version, which is generally recommended for CI
+        uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.x' # Use your desired Flutter version
+          flutter-version: 'latest' 
           channel: 'stable'
 
-      # Get dependencies
-      - run: flutter pub get
+      - name: 📦 Get Dependencies
+        run: flutter pub get
 
-      # Run tests (Optional, but recommended)
-      - run: flutter test
+      - name: 🧪 Run Tests
+        # Runs tests for the first platform that supports it (usually Android/Linux runner)
+        # If tests are platform-specific, add an 'if' condition here.
+        run: flutter test
 
-      # 🔨 Build Android App (APK or AppBundle)
-      - name: Build Android App
+      # --- BUILD STEPS ---
+
+      - name: 📱 Build Android App (APK)
         if: matrix.platform == 'android'
+        # Builds a release APK; consider 'flutter build appbundle' for Google Play
         run: flutter build apk --release
         
-      # 🍏 Build macOS/iOS App
-      - name: Build macOS/iOS App
-        if: matrix.platform == 'ios' || matrix.platform == 'macos'
-        run: |
-          # The iOS build requires specific dependencies and setup not fully covered here.
-          # For macos, the command is simple:
-          flutter build macos --release
-          # For iOS, you would typically build an archive:
-          flutter build ipa --release
+      - name: 🍏 Build iOS Archive (IPA)
+        if: matrix.platform == 'ios'
+        # Note: This step REQUIRES codesigning setup (Certificates/Profiles stored as Secrets)
+        # Without codesigning, this step will fail.
+        run: flutter build ipa --release
           
-      # 🖥️ Build Windows App
-      - name: Build Windows App
+      - name: 💻 Build macOS App
+        if: matrix.platform == 'macos'
+        run: flutter build macos --release
+          
+      - name: 🖼️ Build Windows App
         if: matrix.platform == 'windows'
         run: flutter build windows --release
         
-      #🐧 Build Linux App
-      - name: Build Linux App
+      - name: 🐧 Build Linux App
         if: matrix.platform == 'linux'
         run: flutter build linux --release
 
-      # 📦 Upload Artifacts
-      - uses: actions/upload-artifact@v4
+      # --- ARTIFACT UPLOAD ---
+
+      - name: ⬆️ Upload ${{ matrix.platform }} Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-build
+          # Dynamically finds the output directory for the platform
           path: |
-            build/${{ matrix.platform }}/* # Adjust path based on your exact output needs
+            build/${{ matrix.platform }}/* # Exclude the flutter_assets folder to save space/time, as it's often duplicated.
+          # If you need every single file, remove the exclusion.
+          retention-days: 7
