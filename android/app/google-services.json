@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "38223529044",
+    "project_id": "login-verificati-1712467959577",
+    "storage_bucket": "login-verificati-1712467959577.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:38223529044:android:6078ce7e79716ebefed9c1",
+        "android_client_info": {
+          "package_name": "com.example.scv_water_emu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAehtoujyxr3CxUDgAcdNMKG7nbOs-5J4U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:38223529044:android:b9c32ad01ffcdb02fed9c1",
+        "android_client_info": {
+          "package_name": "com.scv_water.emulator"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAehtoujyxr3CxUDgAcdNMKG7nbOs-5J4U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
