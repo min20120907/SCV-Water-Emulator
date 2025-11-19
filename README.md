@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # scv_water_emu
 
 A new Flutter project.
@@ -14,3 +15,6 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+=======
+# SCV-Water-Emulator
+>>>>>>> 515965877d17471606f5abdb20156c0177f050f6
