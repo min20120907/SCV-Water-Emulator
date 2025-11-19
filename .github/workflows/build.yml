@@ -33,31 +33,30 @@ jobs:
         uses: actions/checkout@v4
       
       - name: 🎯 Set Up Flutter SDK
-        # Uses the 'latest' stable version, which is generally recommended for CI
+        # Using 'latest' stable version, which should fix the version detection error.
         uses: subosito/flutter-action@v2
         with:
           flutter-version: 'latest' 
           channel: 'stable'
+          # Removed non-essential inputs like 'architecture' to improve reliability.
 
       - name: 📦 Get Dependencies
         run: flutter pub get
 
       - name: 🧪 Run Tests
-        # Runs tests for the first platform that supports it (usually Android/Linux runner)
-        # If tests are platform-specific, add an 'if' condition here.
+        # Runs 'flutter test' once per job run (per platform)
         run: flutter test
 
       # --- BUILD STEPS ---
 
       - name: 📱 Build Android App (APK)
         if: matrix.platform == 'android'
-        # Builds a release APK; consider 'flutter build appbundle' for Google Play
+        # Builds a release APK. Use 'flutter build appbundle' for Google Play Store.
         run: flutter build apk --release
         
       - name: 🍏 Build iOS Archive (IPA)
         if: matrix.platform == 'ios'
-        # Note: This step REQUIRES codesigning setup (Certificates/Profiles stored as Secrets)
-        # Without codesigning, this step will fail.
+        # REQUIRES Codesigning credentials (certificates/profiles) set up as GitHub Secrets!
         run: flutter build ipa --release
           
       - name: 💻 Build macOS App
@@ -78,8 +77,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-build
-          # Dynamically finds the output directory for the platform
-          path: |
-            build/${{ matrix.platform }}/* # Exclude the flutter_assets folder to save space/time, as it's often duplicated.
-          # If you need every single file, remove the exclusion.
-          retention-days: 7
+          # Dynamically sets the path to the platform build folder
+          path: build/${{ matrix.platform }}/* retention-days: 7
