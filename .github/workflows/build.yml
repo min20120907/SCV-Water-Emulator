@@ -1,0 +1,75 @@
+name: Flutter Multi-Platform CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        platform: [android, ios, macos, windows, linux]
+        
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: ios
+            os: macos-latest
+          - platform: macos
+            os: macos-latest
+          - platform: windows
+            os: windows-latest
+          - platform: linux
+            os: ubuntu-latest
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🎯 Set Up Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.x' 
+          channel: 'stable'
+
+      - name: 📦 Get Dependencies
+        run: flutter pub get
+
+      - name: 🧪 Run Tests
+        run: flutter test
+
+      # --- BUILD STEPS ---
+
+      - name: 📱 Build Android App (APK)
+        if: matrix.platform == 'android'
+        run: flutter build apk --release
+        
+      - name: 🍏 Build iOS Archive (IPA)
+        if: matrix.platform == 'ios'
+        run: flutter build ipa --release
+          
+      - name: 💻 Build macOS App
+        if: matrix.platform == 'macos'
+        run: flutter build macos --release
+          
+      - name: 🖼️ Build Windows App
+        if: matrix.platform == 'windows'
+        run: flutter build windows --release
+        
+      - name: 🐧 Build Linux App
+        if: matrix.platform == 'linux'
+        run: flutter build linux --release
+
+      # --- ARTIFACT UPLOAD (CORRECTED) ---
+
+      - name: ⬆️ Upload ${{ matrix.platform }} Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-build
+          # CORRECTED: This line is a simple key:value pair
+          path: build/${{ matrix.platform }}/* # CORRECTED: This is a separate key:value pair, correctly indented
+          retention-days: 7
