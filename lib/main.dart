@@ -1,25 +1,19 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:scv_water_emu/firebase_options.dart';
+import 'firebase_options.dart';
 
-// --- 您需要_Initialize Firebase---
-// 1. 請先確保您已設定 Firebase 專案並將 google-services.json (Android) / GoogleService-Info.plist (iOS) 加入
-// 2. 在 pubspec.yaml 加入:
-//    flutter_riverpod: ^2.5.1
-//    firebase_core: ^2.27.2
-//    cloud_firestore: ^4.15.10
-//
-// 3. 您的 main.dart 應如下所示:
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform, // 如果您使用 FlutterFire CLI
+    options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(ProviderScope(child: MyApp()));
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {
@@ -27,278 +21,373 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(title: 'SCV Water Emulator', home: WaterSimulatorApp());
+    return MaterialApp(
+      title: 'SCV Water Emulator',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark().copyWith(
+        primaryColor: Colors.cyanAccent,
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        colorScheme: const ColorScheme.dark(
+          primary: Colors.cyanAccent,
+          secondary: Colors.blueAccent,
+          surface: Color(0xFF1E1E1E),
+        ),
+        sliderTheme: const SliderThemeData(
+          showValueIndicator: ShowValueIndicator.onDrag,
+        ),
+      ),
+      home: const WaterSimulatorApp(),
+    );
   }
 }
-// --- Firebase 結束 ---
 
-// --- 定義水流速率 (mL/秒) ---
-const double kitchenSinkFlow = 65.0;
-const double showerFlow = 65.0;
-const double bathtubFlow = 65.0;
-const double toiletFlushFlow = 1000.0; // 假設沖 5 秒
-const int toiletFlushDuration = 5; // 沖水持續秒數
-// ---
+final kitchenActiveProvider = StateProvider<bool>((ref) => false);
+final kitchenFlowRateProvider = StateProvider<double>((ref) => 65.0);
 
-// --- 狀態管理 (Riverpod) ---
-// 廚房
-final kitchenSinkProvider = StateProvider<bool>((ref) => false);
-// 衛浴
-final showerProvider = StateProvider<bool>((ref) => false);
-final bathtubProvider = StateProvider<bool>((ref) => false);
-final toiletFlushingProvider = StateProvider<bool>((ref) => false); // 是否正在沖馬桶
-final toiletFlushTimerProvider = StateProvider<int>((ref) => 0); // 沖水剩餘秒數
-// ---
+final showerActiveProvider = StateProvider<bool>((ref) => false);
+final showerFlowRateProvider = StateProvider<double>((ref) => 80.0);
+
+final bathtubActiveProvider = StateProvider<bool>((ref) => false);
+final bathtubFlowRateProvider = StateProvider<double>((ref) => 120.0);
+
+final toiletFlushingProvider = StateProvider<bool>((ref) => false);
+final toiletFlushDurationProvider = StateProvider<int>((ref) => 0);
+const double toiletFlushFlowRate = 1000.0;
+const int toiletFlushSeconds = 5;
 
 class WaterSimulatorApp extends ConsumerStatefulWidget {
   const WaterSimulatorApp({super.key});
 
   @override
-  _WaterSimulatorAppState createState() => _WaterSimulatorAppState();
+  ConsumerState<WaterSimulatorApp> createState() => _WaterSimulatorAppState();
 }
 
 class _WaterSimulatorAppState extends ConsumerState<WaterSimulatorApp> {
   final TextEditingController _pairingCodeController = TextEditingController();
   Timer? _simulationTimer;
-  String _statusMessage = "尚未連線";
+  Timer? _toiletCountdownTimer;
+  final Random _random = Random();
+  String _statusMessage = "準備就緒";
+  bool _isSending = false;
 
   @override
   void initState() {
     super.initState();
-    // 啟動每秒一次的模擬計時器
+    _pairingCodeController.text = "DEMO_01";
     _startSimulationLoop();
   }
 
   @override
   void dispose() {
     _simulationTimer?.cancel();
+    _toiletCountdownTimer?.cancel();
     _pairingCodeController.dispose();
     super.dispose();
   }
 
   void _startSimulationLoop() {
-    _simulationTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-      if (_pairingCodeController.text.isEmpty) {
-        setState(() {
-          _statusMessage = "請輸入配對號碼";
-        });
-        return; // 沒有配對碼，不傳送
-      }
+    _simulationTimer?.cancel();
+    _simulationTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (_pairingCodeController.text.trim().isEmpty) return;
 
-      // 檢查是否正在沖馬桶
-      _handleToiletFlush();
+      _handleToiletFlushLogic();
 
-      // 讀取目前所有裝置的狀態
-      final isKitchenSinkOn = ref.read(kitchenSinkProvider);
-      final isShowerOn = ref.read(showerProvider);
-      final isBathtubOn = ref.read(bathtubProvider);
-      final isToiletFlushing = ref.read(toiletFlushingProvider);
+      final noise = 0.9 + (_random.nextDouble() * 0.2);
+      final kFlow = ref.read(kitchenActiveProvider)
+          ? ref.read(kitchenFlowRateProvider) * noise
+          : 0.0;
+      final sFlow = ref.read(showerActiveProvider)
+          ? ref.read(showerFlowRateProvider) * noise
+          : 0.0;
+      final bFlow = ref.read(bathtubActiveProvider)
+          ? ref.read(bathtubFlowRateProvider) * noise
+          : 0.0;
+      final tFlow = ref.read(toiletFlushingProvider) ? toiletFlushFlowRate : 0.0;
 
-      // --- 計算總水量 (疊加) ---
-      double kitchenTotalML = 0;
-      if (isKitchenSinkOn) {
-        kitchenTotalML += kitchenSinkFlow;
-      }
-
-      double restroomTotalML = 0;
-      if (isShowerOn) {
-        restroomTotalML += showerFlow;
-      }
-      if (isBathtubOn) {
-        restroomTotalML += bathtubFlow;
-      }
-      if (isToiletFlushing) {
-        restroomTotalML += toiletFlushFlow;
-      }
-      // ---
+      final totalFlow = kFlow + sFlow + bFlow + tFlow;
 
       setState(() {
-        _statusMessage =
-            "傳送中... (廚房: ${kitchenTotalML}mL/s, 衛浴: ${restroomTotalML}mL/s)";
+        _isSending = totalFlow > 0;
+        _statusMessage = _isSending
+            ? "上傳中... 總流量: ${totalFlow.toStringAsFixed(1)} mL/s"
+            : "待機中 (無水流)";
       });
 
-      // --- 傳送資料到 Firebase ---
-      if (kitchenTotalML > 0) {
-        _sendData("KITCHEN", kitchenTotalML);
+      if (totalFlow > 0) {
+        _sendData({
+          'kitchen_flow': double.parse(kFlow.toStringAsFixed(1)),
+          'shower_flow': double.parse(sFlow.toStringAsFixed(1)),
+          'bathtub_flow': double.parse(bFlow.toStringAsFixed(1)),
+          'toilet_flow': double.parse(tFlow.toStringAsFixed(1)),
+        });
       }
-      if (restroomTotalML > 0) {
-        _sendData("RESTROOM", restroomTotalML);
-      }
-      // ---
     });
   }
 
-  // 處理馬桶沖水計時
-  void _handleToiletFlush() {
-    if (ref.read(toiletFlushingProvider)) {
-      int remaining = ref.read(toiletFlushTimerProvider);
-      if (remaining > 0) {
-        ref.read(toiletFlushTimerProvider.notifier).state = remaining - 1;
-      } else {
-        // 沖水結束
-        ref.read(toiletFlushingProvider.notifier).state = false;
-      }
+  void _handleToiletFlushLogic() {
+    if (!ref.read(toiletFlushingProvider)) return;
+
+    final remaining = ref.read(toiletFlushDurationProvider);
+    if (remaining <= 0) {
+      ref.read(toiletFlushingProvider.notifier).state = false;
     }
   }
 
-  // 觸發沖馬桶
   void _flushToilet() {
-    if (!ref.read(toiletFlushingProvider)) {
-      ref.read(toiletFlushingProvider.notifier).state = true;
-      ref.read(toiletFlushTimerProvider.notifier).state = toiletFlushDuration;
-    }
+    if (ref.read(toiletFlushingProvider)) return;
+
+    ref.read(toiletFlushingProvider.notifier).state = true;
+    ref.read(toiletFlushDurationProvider.notifier).state = toiletFlushSeconds;
+
+    _toiletCountdownTimer?.cancel();
+    _toiletCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final remaining = ref.read(toiletFlushDurationProvider);
+      if (remaining > 0) {
+        ref.read(toiletFlushDurationProvider.notifier).state = remaining - 1;
+      } else {
+        ref.read(toiletFlushingProvider.notifier).state = false;
+        timer.cancel();
+      }
+    });
   }
 
-  // 傳送資料
-  Future<void> _sendData(String location, double amountML) async {
-    final pairingCode = _pairingCodeController.text;
-    if (pairingCode.isEmpty) return;
+  Future<void> _sendData(Map<String, dynamic> data) async {
+    final deviceId = _pairingCodeController.text.trim();
+    if (deviceId.isEmpty) return;
 
     try {
-      // 這會在 'channels' 集合中找到 {pairingCode} 文件，
-      // 並在底下的 'logs' 子集合中新增一筆資料
       await FirebaseFirestore.instance
-          .collection('channels')
-          .doc(pairingCode)
-          .collection('logs')
+          .collection('readings')
+          .doc(deviceId)
+          .collection('stream')
           .add({
-            'location': location,
-            'amountML': amountML,
-            'timestamp': FieldValue.serverTimestamp(), // 使用伺服器時間
+            ...data,
+            'timestamp': FieldValue.serverTimestamp(),
           });
     } catch (e) {
-      // 實際應用中應處理錯誤
-      print("Firebase 傳送失敗: $e");
-      setState(() {
-        _statusMessage = "錯誤：傳送失敗";
-      });
+      debugPrint("Error: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // 監聽馬桶剩餘秒數以更新 UI
-    final toiletTimeLeft = ref.watch(toiletFlushTimerProvider);
+    final panelDecoration = BoxDecoration(
+      color: Colors.white.withAlpha(13),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.white10),
+    );
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('App 1 - 用水模擬器'),
-        backgroundColor: Colors.blueGrey[800],
+        title: const Text('SCV IoT 模擬器'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          if (_isSending)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Icon(Icons.cloud_upload, color: Colors.cyanAccent),
+            ),
+        ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- 配對區 ---
-            TextField(
-              controller: _pairingCodeController,
-              decoration: InputDecoration(
-                labelText: '輸入 App 2 的配對號碼',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                prefixIcon: Icon(Icons.link),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: panelDecoration,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _pairingCodeController,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      letterSpacing: 2,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'DEVICE ID (配對碼)',
+                      border: InputBorder.none,
+                      prefixIcon: Icon(Icons.link, color: Colors.cyanAccent),
+                    ),
+                  ),
+                  Text(
+                    _statusMessage,
+                    style: TextStyle(
+                      color: _isSending ? Colors.cyanAccent : Colors.grey,
+                    ),
+                  ),
+                ],
               ),
-              keyboardType: TextInputType.number,
             ),
-            SizedBox(height: 12),
-            Text(
-              _statusMessage,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            SizedBox(height: 24),
-
-            // --- 廚房區 ---
-            _buildSectionHeader('廚房 (Kitchen)'),
-            _buildWaterControlTile(
-              title: '廚房水槽',
+            const SizedBox(height: 24),
+            DeviceControlCard(
+              name: "廚房水槽",
               icon: Icons.kitchen,
-              provider: kitchenSinkProvider,
+              color: Colors.orangeAccent,
+              activeProvider: kitchenActiveProvider,
+              flowRateProvider: kitchenFlowRateProvider,
+              maxFlow: 150.0,
             ),
-
-            SizedBox(height: 24),
-
-            // --- 衛浴區 ---
-            _buildSectionHeader('衛浴 (Restroom)'),
-            _buildWaterControlTile(
-              title: '淋浴',
+            DeviceControlCard(
+              name: "淋浴間",
               icon: Icons.shower,
-              provider: showerProvider,
+              color: Colors.blueAccent,
+              activeProvider: showerActiveProvider,
+              flowRateProvider: showerFlowRateProvider,
+              maxFlow: 200.0,
             ),
-            _buildWaterControlTile(
-              title: '浴缸',
+            DeviceControlCard(
+              name: "浴缸",
               icon: Icons.bathtub,
-              provider: bathtubProvider,
+              color: Colors.purpleAccent,
+              activeProvider: bathtubActiveProvider,
+              flowRateProvider: bathtubFlowRateProvider,
+              maxFlow: 300.0,
             ),
-            SizedBox(height: 12),
-            ElevatedButton.icon(
-              icon: Icon(Icons.water_drop),
-              label: Text(
-                ref.watch(toiletFlushingProvider)
-                    ? '沖水中... (${toiletTimeLeft}s)'
-                    : '沖馬桶',
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: ref.watch(toiletFlushingProvider)
-                    ? Colors.redAccent
-                    : Colors.blue,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: ref.watch(toiletFlushingProvider)
-                  ? null
-                  : _flushToilet,
-            ),
+            _buildToiletCard(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.bold,
-          color: Colors.blueGrey[700],
+  Widget _buildToiletCard() {
+    final isFlushing = ref.watch(toiletFlushingProvider);
+    final timeLeft = ref.watch(toiletFlushDurationProvider);
+
+    return Card(
+      color: isFlushing
+          ? Colors.redAccent.withAlpha(51)
+          : Colors.white.withAlpha(13),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: isFlushing ? null : _flushToilet,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              const Icon(Icons.delete_outline, size: 32),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "馬桶沖水",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  Text(isFlushing ? "沖水中... ${timeLeft}s" : "點擊沖水 (固定 1000 mL/s)"),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildWaterControlTile({
-    required String title,
-    required IconData icon,
-    required StateProvider<bool> provider,
-  }) {
-    // 使用 Consumer 來重建這個小組件
-    return Consumer(
-      builder: (context, ref, child) {
-        final isOn = ref.watch(provider);
-        return Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+class DeviceControlCard extends ConsumerWidget {
+  final String name;
+  final IconData icon;
+  final Color color;
+  final StateProvider<bool> activeProvider;
+  final StateProvider<double> flowRateProvider;
+  final double maxFlow;
+
+  const DeviceControlCard({
+    super.key,
+    required this.name,
+    required this.icon,
+    required this.color,
+    required this.activeProvider,
+    required this.flowRateProvider,
+    this.maxFlow = 200.0,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isActive = ref.watch(activeProvider);
+    final flowRate = ref.watch(flowRateProvider);
+
+    final bgColor = isActive ? color.withAlpha(25) : Colors.white.withAlpha(13);
+    final borderColor = isActive ? color.withAlpha(128) : Colors.transparent;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: isActive ? color : Colors.grey),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Switch(
+                value: isActive,
+                thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+                  if (states.contains(WidgetState.selected)) return color;
+                  return Colors.grey;
+                }),
+                trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return color.withAlpha(100);
+                  }
+                  return Colors.grey.withAlpha(50);
+                }),
+                onChanged: (val) => ref.read(activeProvider.notifier).state = val,
+              ),
+            ],
           ),
-          child: SwitchListTile(
-            title: Text(title, style: TextStyle(fontWeight: FontWeight.w500)),
-            secondary: Icon(icon, color: isOn ? Colors.blue : Colors.grey),
-            value: isOn,
-            onChanged: (bool value) {
-              ref.read(provider.notifier).state = value;
-            },
-            activeThumbColor: Colors.blueAccent,
-          ),
-        );
-      },
+          if (isActive) ...[
+            const Divider(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("流速設定"),
+                Text(
+                  "${flowRate.round()} mL/s",
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: color,
+                thumbColor: color,
+                inactiveTrackColor: Colors.grey.withAlpha(70),
+              ),
+              child: Slider(
+                value: flowRate,
+                min: 0,
+                max: maxFlow,
+                divisions: maxFlow ~/ 5,
+                onChanged: (val) => ref.read(flowRateProvider.notifier).state = val,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
