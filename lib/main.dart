@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
 
@@ -63,6 +64,7 @@ class WaterSimulatorApp extends ConsumerStatefulWidget {
 }
 
 class _WaterSimulatorAppState extends ConsumerState<WaterSimulatorApp> {
+  static const _pairingCodePrefKey = 'emu_pairing_code';
   final TextEditingController _pairingCodeController = TextEditingController();
   Timer? _simulationTimer;
   Timer? _toiletCountdownTimer;
@@ -73,14 +75,31 @@ class _WaterSimulatorAppState extends ConsumerState<WaterSimulatorApp> {
   @override
   void initState() {
     super.initState();
-    _pairingCodeController.text = "DEMO_01";
+    _pairingCodeController.addListener(_onPairingCodeChanged);
+    _loadSavedPairingCode();
     _startSimulationLoop();
+  }
+
+  Future<void> _loadSavedPairingCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_pairingCodePrefKey);
+    if (!mounted) return;
+    setState(() {
+      _pairingCodeController.text =
+          (saved != null && saved.isNotEmpty) ? saved : "DEMO_01";
+    });
+  }
+
+  Future<void> _onPairingCodeChanged() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pairingCodePrefKey, _pairingCodeController.text.trim());
   }
 
   @override
   void dispose() {
     _simulationTimer?.cancel();
     _toiletCountdownTimer?.cancel();
+    _pairingCodeController.removeListener(_onPairingCodeChanged);
     _pairingCodeController.dispose();
     super.dispose();
   }

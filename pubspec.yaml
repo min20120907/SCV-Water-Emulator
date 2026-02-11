@@ -31,6 +31,7 @@ dependencies:
   flutter_riverpod: ^2.5.1
   firebase_core: ^2.27.2
   cloud_firestore: ^4.15.10
+  shared_preferences: ^2.5.3
   flutter:
     sdk: flutter
 
